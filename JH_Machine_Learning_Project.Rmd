@@ -1,0 +1,190 @@
+---
+title: "Machine Learning Project"
+author: "Jaime Hernandez"
+date: "August 31, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Data
+
+The training data for this project are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv]
+
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv]
+
+The data for this project come from this source: [http://groupware.les.inf.puc-rio.br/har]. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+Write up
+
+Reproducibility:
+
+In order to make this project reproducible, the seed: 555 was used to generate all random numbers in the project. Libraries needed to generate the outputs of this report are included in the "Data Processing, cleansing, and sub setting" section of the code.
+
+Model Building Process:
+
+In order to predict the type of exercise being performed with the available data, a feature building-like process was followed to remove highly correlated variables. Once the desired features were selected, two different machine learning classification models were built and evaluated. The model with the highest accuracy was selected.
+The five possible outcomes were present in the data:
+- exactly according to the specification (Class A)
+- throwing the elbows to the front (Class B)
+- lifting the dumbbell only halfway (Class C)
+- lowering the dumbbell only halfway (Class D)
+- throwing the hips to the front (Class E)
+
+
+Cross-validation and robustness:
+
+As mentioned in the data section, two datasets were provided for this project. The training set was used for model building, and the testing set was used to ultimately evaluate the models. To make the models more robust and have a better estimate of standard errors, the training set was split into two subsets (75% and 25%); the larger subset was used to create the models which were then tested on the smaller training subset followed by the official test on the testing set.
+
+Expected out-of-sample error:
+
+The expected out-of-sample error will correspond to the accuracy calculation measured by the number of time the models were right on the validation subset of the training set, over the number of rows in the validation training subset. 
+
+Justifying modeling choices:
+
+1.	Given that the dataset contained 160 total variables, a covariance analysis was performed to eliminate highly correlated variables. This would remove variance and lessen the possibility of overfitting; greater than |0.9| was selected as the threshold. Variables that were constant were removed for the same reason. (Other variables such as username and timestamp were removed as business intuition can be used to discard them as unnecessary).
+2.	The training data was broken up into 2 subsets to allow for cross validation as described in the model building process section
+3.	A random forest and a boosting model with trees models were selected for this tasks as they are known for their applicability in classification. 
+
+
+Code and Results:
+
+
+1. Data processing, cleansing, and sub setting:
+```{r}
+#Loaad packages
+library(dplyr)
+library(caret)
+library(randomForest)
+library(e1071)
+library(gbm)
+
+#set seed
+
+set.seed(555)
+
+##Read training and testing data
+
+train_data <- read.csv("pml-training.csv", stringsAsFactors = FALSE, na.strings=c("NA","#DIV/0!", ""))
+train_data[is.na(train_data)] <- 0
+
+test_data <- read.csv("pml-testing.csv", stringsAsFactors = FALSE, na.strings=c("NA","#DIV/0!", ""))
+test_data[is.na(test_data)] <- 0
+
+
+head(train_data)
+
+#Remove variables that will no add any value to model
+
+train_data <- train_data %>% select(8:dim(train_data)[2])
+
+# Create subset of data from train data with cross validation in mind
+
+subsamples <- createDataPartition(y=train_data$classe, p=0.75, list=FALSE)
+subTraining <- train_data[subsamples, ] 
+subTesting <- train_data[-subsamples, ]
+
+#Split variables that can be measured by covariance
+char_cols <- subTraining[,sapply(subTraining, is.character)]
+numeric_cols <- subTraining[,sapply(subTraining, is.numeric)]
+
+```
+
+
+2. Reduce the number of variables to minimize variance:
+
+```{r }
+#Remove variables that are always constant
+const_cols <- which(apply(numeric_cols, 2, var)==0)
+
+numeric_cols <- numeric_cols %>%
+    select(-const_cols)
+
+#remove highly correlated variables
+tmp <- cor(numeric_cols)
+tmp[upper.tri(tmp)] <- 0
+diag(tmp) <- 0
+
+#set 90% as the threshold
+sub_train_final <- numeric_cols[, apply(tmp,2,function(x) all(abs(x) <= 0.9))]
+
+sub_train_final <- cbind(sub_train_final, classe = char_cols)
+
+```
+
+3. Random forest model:
+
+```{r }
+#Remove variables that are always constant
+
+model_1 <- randomForest(classe ~. , data=sub_train_final, method="class")
+summary(model_1)
+
+# Predicting:
+prediction_1 <- predict(model_1, subTesting, type = "class")
+
+# Test results on subTesting data set:
+confusionMatrix(as.factor(prediction_1), as.factor(subTesting$classe))
+
+```
+
+
+4. Boosting with trees model:
+
+
+```{r }
+#Remove variables that are always constant
+
+model_2 <- train(classe ~. ,method = "gbm", data=sub_train_final, verbose = FALSE)
+
+#Analyze mddel
+summary(model_2)
+
+# Predicting:
+#1000 trees selected to leverage the robustness of the model
+prediction_2 <- predict(model_2, subTesting, n.trees = 1000)
+
+# Test results on subTesting data set:
+confusionMatrix(as.factor(prediction_2), as.factor(subTesting$classe))
+
+```
+
+
+5. Model Selection:
+
+Not only did the random forest model take a lot less time to be created, but it also outperformed the boosting model. The random forest model was selected;  Expected out-of-sample error for this model is (1-0.9933) or 0.7% other key metrics are below:
+
+Accuracy : 0.9933          
+95% CI : (0.9906, 0.9954)
+No Information Rate : 0.2845          
+P-Value [Acc > NIR] : < 2.2e-16      
+Kappa : 0.9915  
+
+
+6. Submission:
+
+
+```{r }
+
+
+prediction_final <- predict(model_1, test_data, type = "class")
+prediction_final
+
+
+
+```
+
